@@ -1,0 +1,127 @@
+== Join Model
+
+The idea is to use join models to leverage Active Record's has_many :through()
+macro. This is taken from Chad Fowler, Rails Recipes, 2012. (Chapter One)
+
+The has_and_belongs_to_many() (habtm) macro is used for join tables, but those
+join tables (for example a 'subscriptions' table joining Magazines and Readers)
+do not have any data in them other than the relationship. For example, you 
+would name a relationship table magazines_readers, and include only the id's 
+for Magazine and Reader.
+
+The idea here is to store information in the join table, and it is called a
+join model. The relationship item has dates.
+
+We will use a very simple notion of a Car, a Driver, and a Lease.
+The Lease has a Start Date, an End Date, and a Rate.
+
+This example is also serving to explore the minimum number of files which
+are necessary to run Active Record and Rails.
+
+Fowler calls this join model a first-class concept - a Lease.
+It exists by itself.
+
+Here are the relationships. 
+A Car has many Leases; but it also has many Drivers. 
+A Driver has many Leases; but it also has many Cars.
+Each Lease belongs to a Car, and each Lease belongs to a Driver.
+The relationship between Driver and Car (and vice versa, Car and Driver) is 
+the one using the :through. The relationship between Car and Driver is then
+implicitly many-to-many.
+
+The interesting things are as follows:
+
+You can do this: <tt>car.leases << lease</tt>.
+You have to do <tt>lease.save</tt> at the end in order to persist the
+relationships which have been added.
+
+Then, you can do <tt>car.drivers</tt> or <tt>driver.cars</tt>. The
+relation is implicit, and works through the :through parameter of the
+has_many declarations.
+
+ActiveRecord generates a SQL query like this:
+SELECT "cars".* from "cars"
+inner join "leases" on "cars".id = "leases".car_id
+where (("leases".reader_id = 1))
+
+Note that there is an interesting accessor with a SQL condition in the Car
+model.
+
+This is run by using <tt>rails runner app/myscript.rb</tt>.
+
+The steps to generating this app were:
+
+1. At the command prompt, create a new Rails application: <tt>rails new myapp -J --skip-bundle --skip-test-unit --skip-prototype</tt> (where <tt>myapp</tt> is the application name)
+
+2. Change directory to <tt>myapp</tt> and edit the Gemfile. Add therubyracer. Remove sqlite3 and replace it with mysql2; do <tt>bundle install</tt>.
+
+3. Edit the automatically generated database.yml file to use MySQL2 instead of sqlite3.
+
+4. Run <tt>rails g model driver name</tt>.
+
+5. Run <tt>rails g model car make model_name serial</tt>.
+
+6. Create the lease db/migrate file:
+
+   class CreateLeases < ActiveRecord::Migration
+      def change
+        create_table :leases do |t|
+          t.integer :driver_id
+          t.integer :car_id
+          t.date :start_date
+          t.date :end_date
+          t.string :rate
+    
+          t.timestamps
+        end
+      end
+    end
+
+7. Run <tt>rake db:create</tt>.
+
+8. Run <tt>rake db:migrate</tt>.
+
+9. Run <tt>rake db:test:prepare</tt>.
+
+10. Add this to the Car model:
+
+   class Car < ActiveRecord::Base
+     attr_accessible :make, :model_name, :serial
+     has_many :leases
+     has_many :drivers, :through => :leases
+     # named accessor
+     has_many :cheap_drivers,
+       :through => :leases,
+       :source => :driver,
+       :conditions => ['rate < 5.0']
+   end
+
+11. Add this to the Driver model:
+
+    class Driver < ActiveRecord::Base
+      attr_accessible :name
+      has_many :leases
+      has_many :cars, :through => :leases
+    end
+
+12. Add this to the Lease model:
+
+    class Lease < ActiveRecord::Base
+      attr_accessible :start_date, :end_date, :rate
+      belongs_to :car
+      belongs_to :driver
+    end
+
+13. Run <tt>rake db:seed</tt> to create data. That looks like this:
+
+    lease = Lease.create(:start_date => "2012-02-14", :end_date => "2012-08-14", :rate => "4.5")
+    car = Car.create(:make => "Mazda", :model_name => "GLC", :serial => "MG1")
+    driver = Driver.create(:name => "Babe")
+
+    # Wild syntax
+    car.leases << lease
+    driver.leases << lease
+
+    lease.save
+
+14. Then run <tt>rails runner app/myscript.rb</tt>.
